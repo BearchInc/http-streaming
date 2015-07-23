@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -18,10 +17,9 @@ import (
 func init() {
 	router := gin.Default()
 
-	fmt.Printf("Running...\n")
-
 	router.POST("/start", startStreamHandler)
 	router.POST("/streamPart/:username/:title/:fileName", fileHandler)
+	router.POST("/list", listHandler)
 
 	//	router.Run("8080")
 	http.Handle("/", router)
@@ -51,40 +49,69 @@ func fileHandler(c *gin.Context) {
 	title := c.Param("title")
 	filename := c.Param("fileName")
 
-	appEngineContext := appengine.NewContext(c.Request)
+	gaeContext := appengine.NewContext(c.Request)
 
 	hc := &http.Client{
 		Transport: &CloudStorageTransport{&oauth2.Transport{
-			Source: google.AppEngineTokenSource(appEngineContext, storage.ScopeFullControl),
-			Base:   &urlfetch.Transport{Context: appEngineContext},
+			Source: google.AppEngineTokenSource(gaeContext, storage.ScopeFullControl),
+			Base:   &urlfetch.Transport{Context: gaeContext},
 		}},
 	}
 
 	bucketName := "balde_de_bits"
 	bucketFile := username + "/" + title + "/"+ filename
 
-	log.Errorf(appEngineContext, "ID ->>> %v", appengine.AppID(appEngineContext))
-	log.Errorf(appEngineContext, "File name ->>> %v", bucketFile)
+	log.Errorf(gaeContext, "ID ->>> %v", appengine.AppID(gaeContext))
+	log.Errorf(gaeContext, "File name ->>> %v", bucketFile)
 
-	ctx := cloud.NewContext(appengine.AppID(appEngineContext), hc)
+	ctx := cloud.NewContext(appengine.AppID(gaeContext), hc)
 	wc := storage.NewWriter(ctx, bucketName, bucketFile)
-	//	wc.ContentType = "image/png"
+	wc.ACL.
+
 	defer wc.Close()
 
 	bytesWritten, err := io.Copy(wc, c.Request.Body)
 
 	if err != nil {
-		log.Errorf(appEngineContext, "Writing to cloud storage failed. %v", err.Error())
+		log.Errorf(gaeContext, "Writing to cloud storage failed. %v", err.Error())
 		c.JSON(200, gin.H{
 			"response" : "< FAILED >",
 		})
 		return
 	}
 
-	log.Errorf(appEngineContext, "Wrote %v number of bytes, %v", bytesWritten, bucketName)
-	log.Errorf(appEngineContext, "File created with name: %v - %v", bucketName, filename)
+	log.Errorf(gaeContext, "Wrote < %v > bytes for file < %v >", bytesWritten, filename)
 
 	c.JSON(200, gin.H{
 		"response" : "< worked >",
 	})
+}
+
+func listHandler(c *gin.Context) {
+	gaeContext := appengine.NewContext(c.Request)
+
+	fhc := &http.Client{
+		Transport: &CloudStorageTransport{&oauth2.Transport{
+			Source: google.AppEngineTokenSource(gaeContext, storage.ScopeFullControl),
+			Base:   &urlfetch.Transport{Context: gaeContext},
+		}},
+	}
+
+	bucketName := "balde_de_bits"
+
+	cloudContext := cloud.NewContext(appengine.AppID(gaeContext), fhc)
+
+	log.Errorf(gaeContext, "Will list")
+
+	objects, err := storage.ListObjects(cloudContext, bucketName, nil)
+
+	log.Errorf(gaeContext, "Error - %v", err)
+
+
+	c.JSON(200, gin.H{
+		"objects": objects,
+	})
+
+	//	ctx := cloud.NewContext(appengine.AppID(gaeContext), hc)
+	//	wc := storage.NewReader()
 }
