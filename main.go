@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/log"
+	"strings"
 )
 
 func init() {
@@ -31,6 +32,7 @@ func startStreamHandler(c *gin.Context) {
 
 	c.JSON(200, gin.H{
 		"upload_url" : "/streamPart/" + username + "/" + title + "/",
+		"stream_id" :  "stream-" + username + "-" + title,
 	})
 }
 
@@ -66,7 +68,17 @@ func fileHandler(c *gin.Context) {
 
 	ctx := cloud.NewContext(appengine.AppID(gaeContext), hc)
 	wc := storage.NewWriter(ctx, bucketName, bucketFile)
-	wc.ACL.
+
+
+	if strings.Contains(filename, "m3u8") {
+		wc.ContentType = "application/x-mpegURL"
+		wc.CacheControl = "max-age:0"
+	} else if strings.Contains(filename, "ts") {
+		wc.ContentType = "video/MP2T"
+	} else if strings.Contains(filename, "jpg") {
+		wc.ContentType = "image/jpeg"
+	}
+
 
 	defer wc.Close()
 
