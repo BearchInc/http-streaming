@@ -20,7 +20,7 @@ func init() {
 
 	router.POST("/start", startStreamHandler)
 	router.POST("/streamPart/:username/:title/:fileName", fileHandler)
-	router.POST("/list", listHandler)
+	router.GET("/list", listHandler)
 
 	//	router.Run("8080")
 	http.Handle("/", router)
@@ -79,7 +79,6 @@ func fileHandler(c *gin.Context) {
 		wc.ContentType = "image/jpeg"
 	}
 
-
 	defer wc.Close()
 
 	bytesWritten, err := io.Copy(wc, c.Request.Body)
@@ -99,6 +98,19 @@ func fileHandler(c *gin.Context) {
 	})
 }
 
+type Title struct {
+	IndexUrl string `json:"index_url"`
+	VodUrl   string `json:"vod_url"`
+}
+
+type User struct {
+	Titles []Title `json:"titles" `
+}
+
+type Users struct {
+	Users []User `json:"users"`
+}
+
 func listHandler(c *gin.Context) {
 	gaeContext := appengine.NewContext(c.Request)
 
@@ -113,17 +125,62 @@ func listHandler(c *gin.Context) {
 
 	cloudContext := cloud.NewContext(appengine.AppID(gaeContext), fhc)
 
-	log.Errorf(gaeContext, "Will list")
+	objects, _ := storage.ListObjects(cloudContext, bucketName, nil)
 
-	objects, err := storage.ListObjects(cloudContext, bucketName, nil)
+	users := Users{}
+	for _, result := range objects.Results {
+		if strings.Contains(result.Name, ".m3u8") {
+			userString, titleString, fileString := extractValues(result)
 
-	log.Errorf(gaeContext, "Error - %v", err)
+			users.
+
+			if _, ok := users[userString]; !ok {
+				users[userString] = map[string]map[string]string{}
+			}
+
+			titles := users[userString]
+			if _, ok := titles[titleString]; !ok {
+				titles[titleString] = map[string]string{}
+			}
+
+			base := "https://storage.googleapis.com/" + result.Bucket + "/" + result.Name
+			if strings.Contains(fileString, "vod") {
+				titles[titleString]["vod_url"] = base
+			} else {
+				titles[titleString]["index_url"] = base
+			}
+
+		}
+	}
 
 
 	c.JSON(200, gin.H{
-		"objects": objects,
+		"users": users,
 	})
-
-	//	ctx := cloud.NewContext(appengine.AppID(gaeContext), hc)
-	//	wc := storage.NewReader()
 }
+
+func extractValues(result *storage.Object) (user string, title string, file string) {
+	slices := strings.Split(result.Name, "/")
+	return slices[0], slices[1], slices[2]
+}
+
+//
+//
+//{
+//	users: [
+//		{
+//			name: "heckfer",
+//			streamings: [
+//				{
+//					title: "Title",
+//					vod_url: "sdmaslkdmaskld",
+//					index_url: "djasdjasodijas"
+//				},
+//				{
+//					vod_url: "sdmaslkdmaskld",
+//					index_url: "djasdjasodijas"
+//				},
+//			]
+//		}
+//	]
+//}
