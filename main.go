@@ -98,15 +98,17 @@ func fileHandler(c *gin.Context) {
 	})
 }
 
-type Title struct {
-	Title    string `json:"title"`
-	IndexUrl string `json:"index_url"`
-	VodUrl   string `json:"vod_url"`
+type Stream struct {
+	Title        string `json:"title"`
+	IndexUrl     string `json:"index_url"`
+	VodUrl       string `json:"vod_url"`
+	ThumbnailUrl string `json:"thumbnail_url"`
+
 }
 
 type User struct {
-	Name   string `json:"name"`
-	Titles []Title `json:"titles"`
+	Name    string `json:"name"`
+	Streams []Stream `json:"streams"`
 }
 
 func listHandler(c *gin.Context) {
@@ -139,25 +141,27 @@ func mapFilesToDictionary(objects *storage.Objects) (users map[string]map[string
 	users = map[string]map[string]map[string]string{}
 
 	for _, result := range objects.Results {
-		if strings.Contains(result.Name, ".m3u8") {
-			userString, titleString, fileString := extractValues(result)
+		if !(strings.Contains(result.Name, ".m3u8") || (strings.Contains(result.Name, ".jpg"))) {
+			continue
+		}
+		userString, titleString, fileString := extractValues(result)
 
-			if _, ok := users[userString]; !ok {
-				users[userString] = map[string]map[string]string{}
-			}
+		if _, ok := users[userString]; !ok {
+			users[userString] = map[string]map[string]string{}
+		}
 
-			titles := users[userString]
-			if _, ok := titles[titleString]; !ok {
-				titles[titleString] = map[string]string{}
-			}
+		titles := users[userString]
+		if _, ok := titles[titleString]; !ok {
+			titles[titleString] = map[string]string{}
+		}
 
-			base := "https://storage.googleapis.com/" + result.Bucket + "/" + result.Name
-			if strings.Contains(fileString, "vod") {
-				titles[titleString]["vod_url"] = base
-			} else {
-				titles[titleString]["index_url"] = base
-			}
-
+		base := "https://storage.googleapis.com/" + result.Bucket + "/" + result.Name
+		if strings.Contains(fileString, "vod") {
+			titles[titleString]["vod_url"] = base
+		} else if strings.Contains(fileString, "index") {
+			titles[titleString]["index_url"] = base
+		} else {
+			titles[titleString]["thumbnail_url"] = base
 		}
 	}
 
@@ -167,18 +171,20 @@ func mapFilesToDictionary(objects *storage.Objects) (users map[string]map[string
 func mapDictionaryToObjects(usersMap map[string]map[string]map[string]string) (users []User) {
 	users = []User{}
 	for username, userMap := range usersMap {
-		user := User{Name:username, Titles:[]Title{}}
+		user := User{Name:username, Streams:[]Stream{}}
 		for titleName, titleMap := range userMap {
-			title := Title{Title: titleName}
+			title := Stream{Title: titleName}
 			for typeName, url := range titleMap {
 				if strings.Contains(typeName, "vod") {
 					title.VodUrl = url
-				} else {
+				} else if strings.Contains(typeName, "index") {
 					title.IndexUrl = url
+				} else {
+					title.ThumbnailUrl = url
 				}
 			}
 
-			user.Titles = append(user.Titles, title)
+			user.Streams = append(user.Streams, title)
 		}
 
 		users = append(users, user)
