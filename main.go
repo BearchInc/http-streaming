@@ -99,16 +99,14 @@ func fileHandler(c *gin.Context) {
 }
 
 type Title struct {
+	Title    string `json:"title"`
 	IndexUrl string `json:"index_url"`
 	VodUrl   string `json:"vod_url"`
 }
 
 type User struct {
-	Titles []Title `json:"titles" `
-}
-
-type Users struct {
-	Users []User `json:"users"`
+	Name   string `json:"name"`
+	Titles []Title `json:"titles"`
 }
 
 func listHandler(c *gin.Context) {
@@ -127,12 +125,22 @@ func listHandler(c *gin.Context) {
 
 	objects, _ := storage.ListObjects(cloudContext, bucketName, nil)
 
-	users := Users{}
+	usersMap := mapFilesToDictionary(objects)
+	usersStruct := mapDictionaryToObjects(usersMap)
+
+
+	c.JSON(200, gin.H{
+		"users": usersStruct,
+	})
+}
+
+func mapFilesToDictionary(objects *storage.Objects) (users map[string]map[string]map[string]string) {
+
+	users = map[string]map[string]map[string]string{}
+
 	for _, result := range objects.Results {
 		if strings.Contains(result.Name, ".m3u8") {
 			userString, titleString, fileString := extractValues(result)
-
-			users.
 
 			if _, ok := users[userString]; !ok {
 				users[userString] = map[string]map[string]string{}
@@ -153,34 +161,33 @@ func listHandler(c *gin.Context) {
 		}
 	}
 
+	return users
+}
 
-	c.JSON(200, gin.H{
-		"users": users,
-	})
+func mapDictionaryToObjects(usersMap map[string]map[string]map[string]string) (users []User) {
+	users = []User{}
+	for username, userMap := range usersMap {
+		user := User{Name:username, Titles:[]Title{}}
+		for titleName, titleMap := range userMap {
+			title := Title{Title: titleName}
+			for typeName, url := range titleMap {
+				if strings.Contains(typeName, "vod") {
+					title.VodUrl = url
+				} else {
+					title.IndexUrl = url
+				}
+			}
+
+			user.Titles = append(user.Titles, title)
+		}
+
+		users = append(users, user)
+	}
+
+	return users
 }
 
 func extractValues(result *storage.Object) (user string, title string, file string) {
 	slices := strings.Split(result.Name, "/")
 	return slices[0], slices[1], slices[2]
 }
-
-//
-//
-//{
-//	users: [
-//		{
-//			name: "heckfer",
-//			streamings: [
-//				{
-//					title: "Title",
-//					vod_url: "sdmaslkdmaskld",
-//					index_url: "djasdjasodijas"
-//				},
-//				{
-//					vod_url: "sdmaslkdmaskld",
-//					index_url: "djasdjasodijas"
-//				},
-//			]
-//		}
-//	]
-//}
